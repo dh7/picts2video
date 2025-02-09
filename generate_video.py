@@ -3,6 +3,8 @@ import random
 import subprocess
 import argparse
 from pathlib import Path
+from PIL import Image
+import tempfile
 
 def get_image_files(folder_path):
     """Get all image files from the specified folder."""
@@ -15,43 +17,74 @@ def get_image_files(folder_path):
     
     return image_files
 
+def process_image_with_exif(image_path, temp_dir):
+    """Process image to handle EXIF rotation and return the path to the processed image."""
+    try:
+        with Image.open(image_path) as img:
+            # Auto-rotate image according to EXIF data
+            img = Image.open(image_path)
+            rotated = img._getexif()
+            if rotated is not None:
+                orientation = rotated.get(274)  # 274 is the orientation tag in EXIF
+                if orientation:
+                    # Rotate according to EXIF orientation
+                    if orientation == 3:
+                        img = img.rotate(180, expand=True)
+                    elif orientation == 6:
+                        img = img.rotate(270, expand=True)
+                    elif orientation == 8:
+                        img = img.rotate(90, expand=True)
+            
+            # Save to temporary file
+            temp_path = os.path.join(temp_dir, os.path.basename(image_path))
+            img.save(temp_path, quality=95)
+            return temp_path
+    except Exception as e:
+        print(f"Warning: Could not process {image_path}: {e}")
+        return image_path
+
 def create_video(image_files, output_path='output.mp4', duration_per_image=3):
     """Create a video from the list of image files using ffmpeg."""
     if not image_files:
         print("No image files found!")
         return
 
-    # Create a temporary file with the list of images and their durations
-    concat_file = 'temp_concat.txt'
-    with open(concat_file, 'w') as f:
-        for img in image_files:
-            f.write(f"file '{img}'\n")
-            f.write(f"duration {duration_per_image}\n")
-        # Write the last file again (required by ffmpeg)
-        f.write(f"file '{image_files[-1]}'\n")
+    # Create a temporary directory for processed images
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Process all images and get their temporary paths
+        processed_images = [process_image_with_exif(img, temp_dir) for img in image_files]
 
-    # Build ffmpeg command
-    cmd = [
-        'ffmpeg',
-        '-y',  # Overwrite output file if it exists
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', concat_file,
-        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
-        '-c:v', 'libx264',
-        '-pix_fmt', 'yuv420p',
-        '-r', '30',
-        output_path
-    ]
+        # Create a temporary file with the list of images and their durations
+        concat_file = 'temp_concat.txt'
+        with open(concat_file, 'w') as f:
+            for img in processed_images:
+                f.write(f"file '{img}'\n")
+                f.write(f"duration {duration_per_image}\n")
+            # Write the last file again (required by ffmpeg)
+            f.write(f"file '{processed_images[-1]}'\n")
 
-    try:
-        subprocess.run(cmd, check=True)
-        print(f"Video created successfully: {output_path}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error creating video: {e}")
-    finally:
-        # Clean up temporary file
-        os.remove(concat_file)
+        # Build ffmpeg command
+        cmd = [
+            'ffmpeg',
+            '-y',  # Overwrite output file if it exists
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', concat_file,
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-r', '30',
+            output_path
+        ]
+
+        try:
+            subprocess.run(cmd, check=True)
+            print(f"Video created successfully: {output_path}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error creating video: {e}")
+        finally:
+            # Clean up temporary file
+            os.remove(concat_file)
 
 def main():
     parser = argparse.ArgumentParser(description='Create video from images in a folder')
