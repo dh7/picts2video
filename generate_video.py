@@ -143,9 +143,6 @@ def create_video(image_files, output_path='output.mp4', duration_per_image=3):
         return
 
     print(f"\nProcessing {len(image_files)} images...")
-    print("\nFinal image order before processing:")
-    for i, img in enumerate(image_files, 1):
-        print(f"{i}. {os.path.basename(img)}")
 
     # Create a temporary directory for processed images and chunks
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -157,10 +154,6 @@ def create_video(image_files, output_path='output.mp4', duration_per_image=3):
             processed_path = process_image_with_exif(img, temp_dir)
             processed_images.append(processed_path)
         print("Image processing complete!")
-        
-        print("\nProcessed images order:")
-        for i, img in enumerate(processed_images, 1):
-            print(f"{i}. {os.path.basename(img)}")
         
         # Parameters for transitions
         fade_duration = 0.5
@@ -278,9 +271,6 @@ def main():
             print(f"Found first image: {os.path.basename(first_image_found)}")
             # Remove the first image from the list and shuffle the rest
             image_files.remove(first_image_found)
-            print("\nRemaining images before shuffle:")
-            for img in image_files:
-                print(f"- {os.path.basename(img)}")
             random.shuffle(image_files)
             # Put the first image back at the beginning
             image_files.insert(0, first_image_found)
